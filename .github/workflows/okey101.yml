@@ -6,7 +6,7 @@ on:
       guests:
         description: "Number of guest players (1 or 3)"
         required: true
-        default: "1"
+        default: "3"
         type: choice
         options:
           - "1"
