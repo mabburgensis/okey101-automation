@@ -1,0 +1,43 @@
+﻿name: DracoFusion 101 – 2 tables, 4 players, every 30 minutes
+
+on:
+  # 7/24 her yarım saatte bir tetikleme (UTC'ye göre, ama 0,30 olduğu için tüm saatlerde geçerli)
+  schedule:
+    - cron: "0,30 * * * *"
+
+  # İstersen manuel olarak da çalıştırabilmek için
+  workflow_dispatch:
+
+jobs:
+  run-two-tables:
+    runs-on: ubuntu-latest
+
+    # Aynı işi 2 defa (2 masa) paralel koşturmak için
+    strategy:
+      matrix:
+        table_id: [1, 2]
+
+    env:
+      # Her masada 1 host + 3 guest
+      GUESTS: "3"
+      # Gerekirse buradan ortam adresini değiştirebilirsin
+      BASE_URL: https://skin.dracofusion.com/
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run 101 multi-user flow (table ${{ matrix.table_id }})
+        run: |
+          echo "Running table ${{ matrix.table_id }} with 1 host + $GUESTS guests..."
+          python main.py --guests "$GUESTS"
