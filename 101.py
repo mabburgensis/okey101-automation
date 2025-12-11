@@ -90,6 +90,14 @@ def generate_valid_credentials():
     password = "Test123!"
 
     return email, username, password
+def generate_table_name() -> str:
+    """
+    Masa adı için oldukça benzersiz bir suffix üretir.
+    """
+    now_ms = int(time.time() * 1000)
+    rand = random.randint(100, 999)
+    suffix = f"{now_ms}{rand}"[-8:]
+    return f"auto_table_{suffix}"
 
 
 def register_new_user(driver, wait):
