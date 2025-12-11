@@ -3,7 +3,7 @@
 on:
   # 7/24 her yarım saatte bir tetikleme (UTC'ye göre, ama 0,30 olduğu için tüm saatlerde geçerli)
   schedule:
-    - cron: "0,15 * * * *"
+    - cron: "*/10 * * * *"
 
   # İstersen manuel olarak da çalıştırabilmek için
   workflow_dispatch:
