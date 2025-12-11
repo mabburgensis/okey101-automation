@@ -73,10 +73,22 @@ def get_register_form_elements(driver):
 
 
 def generate_valid_credentials():
+    """
+    Register için benzersiz/eşsiz'e çok yakın email & username üretir.
+    Zaman damgası + random kullanıyoruz.
+    """
+    # ms cinsinden zaman damgası
+    now_ms = int(time.time() * 1000)
+    # ek random, paralel çağrılarda çakışma ihtimalini iyice düşürmek için
     rand = random.randint(1000, 9999)
-    email = f"autotest{rand}@example.com"
-    username = f"autouser{rand}"
+
+    # string olarak birleştir, çok uzunsa sondan kısalt
+    suffix = f"{now_ms}{rand}"[-10:]  # son 10 haneyi al
+
+    email = f"autotest{suffix}@example.com"
+    username = f"autouser{suffix}"
     password = "Test123!"
+
     return email, username, password
 
 
