@@ -15,7 +15,7 @@ jobs:
     # Aynı işi 2 defa (2 masa) paralel koşturmak için
     strategy:
       matrix:
-        table_id: [1, 2, 3, 4, 5]
+        table_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     
     env:
       # Her masada 1 host + 3 guest
