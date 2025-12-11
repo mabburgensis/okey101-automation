@@ -90,6 +90,7 @@ def generate_valid_credentials():
     password = "Test123!"
 
     return email, username, password
+    
 def generate_table_name() -> str:
     """
     Masa adı için oldukça benzersiz bir suffix üretir.
@@ -329,8 +330,8 @@ def host_create_table(host: Player, total_players: int) -> str:
 
     table_name_el = driver.find_element(By.XPATH, Okey101Locators.TABLE_NAME_INPUT)
     bet_amount_el = driver.find_element(By.XPATH, Okey101Locators.BET_AMOUNT_INPUT)
-
-    table_name = f"auto_table_{random.randint(1000, 9999)}"
+    
+    table_name = generate_table_name()
     table_name_el.clear()
     human_delay()
     type_slow(table_name_el, table_name)
