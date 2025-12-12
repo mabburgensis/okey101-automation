@@ -18,6 +18,7 @@ jobs:
         table_id: [1, 2, 3, 4, 5]
     
     env:
+      PYTHONUNBUFFERED: "1"
       # Her masada 1 host + 3 guest
       GUESTS: "3"
       # Gerekirse buradan ortam adresini değiştirebilirsin
@@ -40,4 +41,4 @@ jobs:
       - name: Run 101 multi-user flow (table ${{ matrix.table_id }})
         run: |
           echo "Running table ${{ matrix.table_id }} with 1 host + $GUESTS guests..."
-          python main.py --guests "$GUESTS"
+          python -u main.py --guests "$GUESTS"
