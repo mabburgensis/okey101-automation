@@ -34,6 +34,9 @@ class Okey101Locators:
         "//button[.//div[normalize-space()='Masa Oluştur' "
         "or normalize-space()='Create Table']]"
     )
+    
+    LOBBY_NICKNAME_INPUT = '//*[@id="root"]/div/div[2]/div/div/form/label/input'
+    LOBBY_NICKNAME_SAVE_BUTTON = '//*[@id="root"]/div/div[2]/div/div/form/nav/button'
 
     # Masa oluştur modalı
     TABLE_NAME_INPUT = '//*[@id="root"]/div/div[2]/div/div/form/label/input'

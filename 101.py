@@ -38,16 +38,38 @@ def type_slow(element, text: str,
 class Player:
     role: str          # "HOST", "GUEST", "GUEST_1", ...
     driver: object
-    wait: object
+    wait: WebDriverWait
     email: str
     username: str
     password: str
 
 
+# -------------------- UNIQUE DATA HELPERS --------------------
+
+
+def _unique_suffix() -> str:
+    now_ms = int(time.time() * 1000)
+    rand = random.randint(100, 999)
+    return f"{now_ms}{rand}"[-8:]
+
+
+def generate_valid_credentials():
+    suffix = _unique_suffix()
+    email = f"autotest{suffix}@example.com"
+    username = f"autouser{suffix}"
+    password = "Test123!"
+    return email, username, password
+
+
+def generate_table_name() -> str:
+    suffix = _unique_suffix()
+    return f"auto_table_{suffix}"
+
+
 # -------------------- REGISTER FLOW --------------------
 
 
-def open_register_modal(driver, wait) -> None:
+def open_register_modal(driver, wait: WebDriverWait) -> None:
     print("DEBUG | Opening registration modal...")
     human_delay()
     register_btn = wait.until(
@@ -72,39 +94,7 @@ def get_register_form_elements(driver):
     return email_el, username_el, password_el, submit_el
 
 
-def generate_valid_credentials():
-    """
-    Register için benzersiz/eşsiz'e çok yakın email & username üretir.
-    Zaman damgası + random kullanıyoruz.
-    """
-    # ms cinsinden zaman damgası
-    now_ms = int(time.time() * 1000)
-    # ek random, paralel çağrılarda çakışma ihtimalini iyice düşürmek için
-    rand = random.randint(1000, 9999)
-
-    # string olarak birleştir, çok uzunsa sondan kısalt
-    suffix = f"{now_ms}{rand}"[-10:]  # son 10 haneyi al
-
-    email = f"autotest{suffix}@example.com"
-    username = f"autouser{suffix}"
-    password = "Test123!"
-
-    return email, username, password
-    
-def generate_table_name() -> str:
-    """
-    Masa adı için oldukça benzersiz bir suffix üretir.
-    """
-    now_ms = int(time.time() * 1000)
-    rand = random.randint(100, 999)
-    suffix = f"{now_ms}{rand}"[-8:]
-    return f"auto_table_{suffix}"
-
-
-def register_new_user(driver, wait):
-    """
-    Yeni kullanıcı oluşturur ve başarılı kayıt sonrası modalın kapanmasını bekler.
-    """
+def register_new_user(driver, wait: WebDriverWait):
     print("DEBUG | Starting positive registration flow...")
     open_register_modal(driver, wait)
     email_el, username_el, password_el, submit_el = get_register_form_elements(driver)
@@ -130,7 +120,6 @@ def register_new_user(driver, wait):
     submit_el.click()
     print("DEBUG | Register submit clicked, waiting for modal to disappear...")
 
-    # CI'da ve paralel koşullarda backend yavaşlayabiliyor; bu yüzden daha uzun timeout + graceful fallback
     try:
         WebDriverWait(driver, 40).until(
             EC.invisibility_of_element_located(
@@ -139,22 +128,19 @@ def register_new_user(driver, wait):
         )
         print("DEBUG | Registration modal closed, registration assumed successful.")
     except TimeoutException:
-        # Buraya geldiysek modal 40 sn içinde kaybolmadı; loglayıp yine de yola devam ediyoruz.
-        # Login akışında zaten header'daki login butonuna göre yeniden durum kontrolü yapıyoruz.
-        print("WARN  | Registration modal did not disappear within 40s. "
-              "Continuing anyway (assuming registration succeeded).")
+        print(
+            "WARN  | Registration modal did not disappear within 40s. "
+            "Continuing anyway (assuming registration succeeded)."
+        )
 
     return email, username, password
 
 
-# -------------------- LOGIN FLOW (opsiyonel) --------------------
+# -------------------- LOGIN FLOW (optional) --------------------
 
 
-def login_if_login_button_visible(driver, wait, username: str, password: str) -> None:
-    """
-    Header'da login butonu varsa login yapar.
-    Yoksa zaten login kabul eder.
-    """
+def login_if_login_button_visible(driver, wait: WebDriverWait,
+                                  username: str, password: str) -> None:
     print("DEBUG | Checking if login button is visible...")
 
     try:
@@ -203,12 +189,82 @@ def login_if_login_button_visible(driver, wait, username: str, password: str) ->
     print("DEBUG | Login completed (modal closed).")
 
 
-# -------------------- 101 LOBBY & TABLE HELPERS --------------------
+# -------------------- 101 LOBBY & NICKNAME --------------------
+
+
+def _handle_lobby_nickname(player: Player) -> None:
+    """
+    101 banner'a tıklandıktan sonra gelen 'Set your nickname' popup'ını
+    bulup username'i yazar ve Save'e basar. Popup yoksa sessizce döner.
+    """
+    driver, wait = player.driver, player.wait
+    print(f"DEBUG | {player.role}: Checking for lobby nickname popup...")
+
+    input_locator = (By.XPATH, Okey101Locators.LOBBY_NICKNAME_INPUT)
+    button_locator = (By.XPATH, Okey101Locators.LOBBY_NICKNAME_SAVE_BUTTON)
+
+    driver.switch_to.default_content()
+
+    # Önce default content
+    try:
+        nickname_el = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located(input_locator)
+        )
+        print(f"DEBUG | {player.role}: Lobby nickname input found in default content.")
+    except TimeoutException:
+        nickname_el = None
+        frames = driver.find_elements(By.TAG_NAME, "iframe")
+        print(f"DEBUG | {player.role}: Lobby nickname not in default content, checking {len(frames)} iframe(s)...")
+        for idx, frame in enumerate(frames):
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(frame)
+                frame_wait = WebDriverWait(driver, 3)
+                nickname_el = frame_wait.until(
+                    EC.presence_of_element_located(input_locator)
+                )
+                print(f"DEBUG | {player.role}: Lobby nickname input found in iframe index {idx}.")
+                break
+            except TimeoutException:
+                continue
+
+        if nickname_el is None:
+            driver.switch_to.default_content()
+            print(f"DEBUG | {player.role}: Lobby nickname popup not found; probably already set.")
+            return
+
+    # Doğru context'teyiz, şimdi Save butonunu alalım
+    try:
+        button_el = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable(button_locator)
+        )
+    except TimeoutException:
+        print(f"WARN  | {player.role}: Lobby nickname Save button not found.")
+        return
+
+    human_delay()
+    nickname_el.clear()
+    human_delay()
+    type_slow(nickname_el, player.username)
+
+    human_delay()
+    button_el.click()
+    print(f"DEBUG | {player.role}: Lobby nickname saved, waiting for popup to close...")
+
+    WebDriverWait(driver, 10).until(
+        EC.invisibility_of_element_located(input_locator)
+    )
+    print(f"DEBUG | {player.role}: Lobby nickname popup closed.")
+    driver.switch_to.default_content()
 
 
 def go_to_101_lobby(player: Player) -> None:
-    """Her oyuncu için 101 banner'a tıklayıp lobiye gir.
-    Gerekirse iframe'ler içinde CREATE_TABLE_BUTTON'ı arar.
+    """
+    Her oyuncu için:
+    1) 101 banner'a tıkla
+    2) Nickname popup'ı varsa doldur + Save
+    3) Son olarak 101 lobisinde CREATE_TABLE_BUTTON görünene kadar bekle
+       (default content + iframe fallback)
     """
     driver, wait = player.driver, player.wait
     print(f"DEBUG | {player.role}: Navigating to 101 lobby...")
@@ -220,8 +276,12 @@ def go_to_101_lobby(player: Player) -> None:
         )
     )
     banner.click()
-    print(f"DEBUG | {player.role}: 101 banner clicked, waiting for lobby...")
+    print(f"DEBUG | {player.role}: 101 banner clicked, handling nickname & waiting for lobby...")
 
+    # 1) Önce nickname popup'ını handle et
+    _handle_lobby_nickname(player)
+
+    # 2) Şimdi CREATE_TABLE_BUTTON görünene kadar bekle
     driver.switch_to.default_content()
     try:
         wait.until(
@@ -261,14 +321,9 @@ def go_to_101_lobby(player: Player) -> None:
 
 
 def is_101_lobby_visible(player: Player, short_timeout: float = 2.0) -> bool:
-    """
-    CREATE_TABLE_BUTTON görünüyorsa 101 lobisindeyiz demektir.
-    Oyun bitince otomatik lobiye dönüldüğünü bu şekilde anlarız.
-    """
     driver = player.driver
     locator = (By.XPATH, Okey101Locators.CREATE_TABLE_BUTTON)
 
-    # Önce default content
     driver.switch_to.default_content()
     try:
         WebDriverWait(driver, short_timeout).until(
@@ -278,7 +333,6 @@ def is_101_lobby_visible(player: Player, short_timeout: float = 2.0) -> bool:
     except TimeoutException:
         pass
 
-    # Sonra iframe'ler
     frames = driver.find_elements(By.TAG_NAME, "iframe")
     for frame in frames:
         try:
@@ -296,7 +350,6 @@ def is_101_lobby_visible(player: Player, short_timeout: float = 2.0) -> bool:
 
 
 def _table_row_xpath(table_name: str) -> str:
-    """Lobby tablosunda masa adından satır seçmek için XPath üretir."""
     return f"//table//tr[.//td[1][normalize-space()='{table_name}']]"
 
 
@@ -304,11 +357,6 @@ def _table_row_xpath(table_name: str) -> str:
 
 
 def host_create_table(host: Player, total_players: int) -> str:
-    """
-    Host 101 lobisinde masa oluşturur.
-    total_players = 2 veya 4 (1 host + 1/3 guest).
-    Dönen değer: host'un input'a yazdığı masa adı.
-    """
     driver, wait = host.driver, host.wait
     print(f"DEBUG | {host.role}: Creating table for {total_players} players...")
     human_delay()
@@ -330,7 +378,7 @@ def host_create_table(host: Player, total_players: int) -> str:
 
     table_name_el = driver.find_element(By.XPATH, Okey101Locators.TABLE_NAME_INPUT)
     bet_amount_el = driver.find_element(By.XPATH, Okey101Locators.BET_AMOUNT_INPUT)
-    
+
     table_name = generate_table_name()
     table_name_el.clear()
     human_delay()
@@ -357,7 +405,7 @@ def host_create_table(host: Player, total_players: int) -> str:
     human_delay()
     submit_el = driver.find_element(By.XPATH, Okey101Locators.CREATE_TABLE_SUBMIT_BUTTON)
     submit_el.click()
-    print("DEBUG | Masa Oluştur submit clicked, waiting for modal to close...")
+    print("DEBUG | Create Table submit clicked, waiting for modal to close...")
 
     wait.until(
         EC.invisibility_of_element_located(
@@ -373,7 +421,6 @@ def host_create_table(host: Player, total_players: int) -> str:
 
 
 def guest_join_table(guest: Player, table_name: str) -> None:
-    """Guest belirtilen masa adına sahip masaya 'Sit/Otur' ile katılır."""
     driver, wait = guest.driver, guest.wait
     print(f"DEBUG | {guest.role}: Joining table '{table_name}'...")
     human_delay()
@@ -384,7 +431,6 @@ def guest_join_table(guest: Player, table_name: str) -> None:
         EC.presence_of_element_located((By.XPATH, row_xpath))
     )
 
-    # Aynı satırın son sütunundaki buton (Sit/Otur)
     join_btn_xpath = f"{row_xpath}//td[last()]//button"
     join_btn = wait.until(
         EC.element_to_be_clickable((By.XPATH, join_btn_xpath))
@@ -395,71 +441,12 @@ def guest_join_table(guest: Player, table_name: str) -> None:
     print(f"DEBUG | {guest.role}: Clicked join button for table '{table_name}'.")
 
 
-# -------------------- NICKNAME ENTRY --------------------
-
-
-def enter_table_nickname(player: Player, nickname: str) -> None:
-    """Masa içindeki 'Bir İsim Belirle' ekranında nickname girip masaya giriş yapar."""
-    driver, wait = player.driver, player.wait
-    print(f"DEBUG | {player.role}: Entering table nickname '{nickname}'...")
-
-    input_locator = (By.XPATH, Okey101Locators.TABLE_NICKNAME_INPUT)
-    button_locator = (By.XPATH, Okey101Locators.TABLE_NICKNAME_SUBMIT)
-
-    # 1) Mevcut context'te dene
-    try:
-        nickname_el = wait.until(
-            EC.presence_of_element_located(input_locator)
-        )
-        print(f"DEBUG | {player.role}: Nickname input found in current context.")
-    except TimeoutException:
-        print(f"DEBUG | {player.role}: Nickname input not found in current context. Trying iframes...")
-        nickname_el = None
-        frames = driver.find_elements(By.TAG_NAME, "iframe")
-        print(f"DEBUG | {player.role}: Found {len(frames)} iframe(s) while looking for nickname.")
-        for idx, frame in enumerate(frames):
-            try:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(frame)
-                frame_wait = WebDriverWait(driver, 10)
-                nickname_el = frame_wait.until(
-                    EC.presence_of_element_located(input_locator)
-                )
-                print(f"DEBUG | {player.role}: Nickname input found in iframe index {idx}.")
-                break
-            except TimeoutException:
-                continue
-
-        if nickname_el is None:
-            driver.switch_to.default_content()
-            raise TimeoutException("Nickname input could not be found in any context.")
-
-    human_delay()
-    nickname_el.clear()
-    human_delay()
-    type_slow(nickname_el, nickname)
-
-    human_delay()
-    button_el = driver.find_element(*button_locator)
-    button_el.click()
-    print(f"DEBUG | {player.role}: Nickname submit clicked, waiting for entry...")
-
-    # Nickname ekranının kapanmasını bekle
-    wait.until(EC.invisibility_of_element_located(input_locator))
-    print(f"DEBUG | {player.role}: Nickname screen closed; player should be inside the table.")
-
-
 # -------------------- GAME END WAIT --------------------
 
 
 def wait_for_game_end(host: Player,
                       poll_interval: int = 10,
                       max_wait_minutes: int = 40) -> None:
-    """
-    Host'un tekrar 101 lobisine dönmesini bekler.
-    Her poll_interval saniyede bir lobby kontrolü yapar.
-    max_wait_minutes sonra hâlâ lobby yoksa uyarı verip yine çıkar.
-    """
     print("INFO | Game is now running.")
     print("INFO | Waiting for host to return to 101 lobby to end the script...")
 
@@ -540,7 +527,7 @@ def parse_args():
 def main():
     args = parse_args()
     guest_count = args.guests
-    total_players = 1 + guest_count  # 2 veya 4
+    total_players = 1 + guest_count  # 2 or 4
 
     host = None
     guests = []
@@ -561,7 +548,7 @@ def main():
         print(f"Total players planned for table: {total_players}")
         print("===============================\n")
 
-        # Herkesi 101 lobisine taşı
+        # Herkesi 101 lobisine taşı (banner + nickname + lobby)
         all_players = [host] + guests
         for p in all_players:
             go_to_101_lobby(p)
@@ -569,16 +556,14 @@ def main():
         # Host masa açar
         table_name = host_create_table(host, total_players)
         print(f"DEBUG | Host created table '{table_name}'.")
+        
+        time.sleep(3)
 
-        # Host nickname girer
-        enter_table_nickname(host, host.username)
-
-        # Tüm guest'ler masaya oturup nickname girer
+        # Tüm guest'ler masaya oturur
         for g in guests:
             guest_join_table(g, table_name)
-            enter_table_nickname(g, g.username)
 
-        print("DEBUG | All guests attempted to join the host table and enter nicknames.")
+        print("DEBUG | All guests attempted to join the host table.")
 
         # Oyun başladı; host'un tekrar lobide görünmesini bekle
         wait_for_game_end(host, poll_interval=10, max_wait_minutes=40)
