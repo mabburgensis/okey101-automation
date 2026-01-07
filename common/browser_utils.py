@@ -10,8 +10,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 CI_ENV = os.getenv("CI", "").lower() in ("1", "true", "yes")
 
 # Base URL ortam değişkeniyle değiştirilebilir
-BASE_URL = os.getenv("BASE_URL", "https://skin.dracofusion.com/")
-
+# BASE_URL = os.getenv("BASE_URL", "https://skin.dracofusion.com/")
+BASE_URL = os.getenv("BASE_URL", "https://operator.ui-test.dracofusion.com/")
 def open_browser():
     """Chrome WebDriver açar ve BASE_URL'e gider."""
     options = Options()
