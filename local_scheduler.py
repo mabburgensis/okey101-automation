@@ -5,9 +5,9 @@ import subprocess
 import datetime as dt
 
 # ================== CONFIG ==================
-GUESTS = 1                 # 1 -> 2 player table, 3 -> 4 player table
-PARALLEL_JOBS = 1          # Her periyotta aynı anda kaç masa açılsın
-INTERVAL_MINUTES = 2      # Kaç dakikada bir tetiklensin
+GUESTS = 3               # 1 -> 2 player table, 3 -> 4 player table
+PARALLEL_JOBS = 25          # Her periyotta aynı anda kaç masa açılsın
+INTERVAL_MINUTES = 15      # Kaç dakikada bir tetiklensin
 
 # Gün içinde kaç saat aralığında aktif olsun (24h format)
 ACTIVE_START = "00:00"     # Ör: "13:00"
